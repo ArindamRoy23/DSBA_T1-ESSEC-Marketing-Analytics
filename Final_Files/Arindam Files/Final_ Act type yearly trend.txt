@@ -1,0 +1,6 @@
+select year(act_date), 
+if(act_type_id = 'PA', 'automatic deduction', 'one-off donation') act_type, 
+sum(amount)
+from ma_charity.acts 
+group by year(act_date), act_type_id
+order by year(act_date);

@@ -1,0 +1,13 @@
+select actions.contact_id, actions.message_id,
+actions.campaign_id, actions.channel_id, 
+actions.action_date, coalesce(acts.amount,0), coalesce(acts.act_date,0)
+-- ,(acts.act_date - actions.action_date )/7
+,(datediff(acts.act_date,actions.action_date))/7 as weeks_later
+from 
+(select * from ma_charity.actions) as actions
+left join (select * from ma_charity.acts) as acts
+on -- actions.action_date = acts.act_date and 
+actions.message_id = acts.message_id and
+actions.channel_id = acts.channel_id and
+actions.contact_id = acts.contact_id
+where amount is not null

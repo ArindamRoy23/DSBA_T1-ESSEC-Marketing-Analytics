@@ -1,0 +1,24 @@
+-- Run until *** manually if does not work in R 
+
+drop table if exists ma_charity.toplot_campaign_details_2;
+create  table  ma_charity.toplot_campaign_details_2
+select  if(act_type_id = 'PA', 'automatic deduction', 'one-off donation') act_type,
+campaign_id, act_date,year(act_date), month(act_date), sum(amount) as monthly_contri
+from ma_charity.acts
+group by act_type_id,campaign_id, year(act_date), month(act_date)
+order by campaign_id, year(act_date), month(act_date);
+
+-- ***
+
+select 
+act_type, start_date,
+campaign_id,sum(monthly_contri) as 10_mo_sum, 
+count(*) as number_of_donations
+from (select 
+act_type,start_date,full_t.campaign_id, monthly_contri, act_date-start_date days_from_first 
+from ma_charity.toplot_campaign_details_2 as full_t left join 
+(select campaign_id, min(act_date) as start_date from ma_charity.toplot_campaign_details_2 
+group by (campaign_id)) as min_date_t on full_t.campaign_id = min_date_t.campaign_id 
+where act_date-start_date<300) a 
+group by campaign_id, act_type
+order by campaign_id ;

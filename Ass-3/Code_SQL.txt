@@ -1,0 +1,10 @@
+# Acts backdated table
+
+DROP TABLE IF EXISTS ma_charity.A3_ACTS_TEST;
+CREATE TABLE ma_charity.A3_ACTS_TEST (SELECT * FROM ma_charity.ACTS 
+WHERE act_date<20210731);
+
+# Actions backdated table
+DROP TABLE IF EXISTS ma_charity.A3_ACTIONS_TEST;
+CREATE TABLE ma_charity.A3_ACTIONS_TEST (SELECT * FROM ma_charity.ACTIONS 
+WHERE action_date<20210731);

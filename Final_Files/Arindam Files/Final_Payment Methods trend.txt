@@ -1,0 +1,7 @@
+select * from 
+(select payment_method_id, 
+if(act_type_id = 'PA', 'automatic deduction', 'one-off donation') act_type, 
+sum(amount) from ma_charity.acts
+group by payment_method_id, act_type_id) acts
+left join ma_charity.payment_methods as payment_methods 
+on payment_methods.id = acts.payment_method_id

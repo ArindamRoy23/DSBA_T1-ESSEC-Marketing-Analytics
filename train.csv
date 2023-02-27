@@ -1,0 +1,6 @@
+"","x"
+"1","42S02 1146 [MySQL][ODBC 8.0(w) Driver][mysqld-8.0.31]Table 'ma_charity.ass2_t1_train' doesn't exist"
+"2","[RODBC] ERROR: Could not SQLExecDirect '
+
+select * from ma_charity.ass2_t1_train;
+'"

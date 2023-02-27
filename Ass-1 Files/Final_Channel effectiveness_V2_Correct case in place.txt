@@ -1,0 +1,28 @@
+-- Year on Year
+select if(act_type_id = 'PA', 'automatic deduction', 'one-off donation') act_type,
+(CASE 
+	WHEN channel_id IS NULL THEN 'NULL'
+    WHEN channel_id = 'MA' THEN 'paper-based direct marketing campaigns'
+    WHEN channel_id = 'WW' THEN 'online'
+    WHEN channel_id = 'SB' THEN 'Spontaneous'
+    ELSE channel_id 
+END ) channel_id
+, 
+year(act_date), sum(amount) from ma_charity.acts
+group by year(act_date), channel_id,act_type_id
+order by year(act_date), channel_id;
+
+-- Cummulative
+select if(act_type_id = 'PA', 'automatic deduction', 'one-off donation') act_type,
+(CASE 
+	WHEN channel_id IS NULL THEN 'NULL'
+    WHEN channel_id = 'MA' THEN 'paper-based direct marketing campaigns'
+    WHEN channel_id = 'WW' THEN 'online'
+    WHEN channel_id = 'SB' THEN 'Spontaneous'
+    ELSE channel_id 
+END ) channel_id
+, 
+count(*) as number_of_donations, sum(amount), avg(amount) 
+from ma_charity.acts
+group by  channel_id, act_type_id
+order by  channel_id; 

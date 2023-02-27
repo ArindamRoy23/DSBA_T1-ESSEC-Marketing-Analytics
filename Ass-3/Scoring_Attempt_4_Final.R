@@ -1,0 +1,162 @@
+# Load the package
+library(RODBC)
+library(tidyr)
+library(dplyr)
+# Load the package
+library(RODBC)
+library(tidyr)
+library(dplyr)
+library(nnet)
+library(tidyverse)
+
+# Connect to MySQL (my credentials are mysql_server_64/root/.)
+db = odbcConnect("mysql_server_64", uid="root", pwd="root")
+sqlQuery(db, "USE ma_charity")
+query = "
+  select *,datediff(20221231,act_date)/365 as recency,
+  month(act_date) as month
+  from ma_charity.acts
+  "
+
+data = sqlQuery(db, query)
+# Close the connection
+odbcClose(db)
+
+# OHE important variables
+data = data %>% mutate(value = 1)  %>% spread(month, value,  fill = 0 ) 
+# data = data %>% mutate(value = 1)  %>% spread(act_type_id, value,  fill = 0) 
+# data = data%>% mutate(value = 1)  %>% spread(payment_method_id, value,  fill = 0)
+# data = data%>% mutate(value = 1)  %>% spread(channel_id, value,  fill = 0)
+
+
+data$act_date <- NULL
+data$act_type_id <- NULL
+data$payment_method_id <- NULL
+data$id <- NULL
+data$channel_id <- NULL
+data$message_id <- NULL
+data$campaign_id <- NULL
+months_col = list('mo_1','mo_2','mo_3','mo_4','mo_5','mo_6','mo_7','mo_8','mo_9','mo_10','mo_11','mo_12')
+data = data %>% rename(mo_1=4,mo_2=5,mo_3=6,mo_4=7,mo_5=8,mo_6=9,mo_7=10,mo_8=11,mo_9=12,mo_10=13,mo_11=14,mo_12=15)
+
+data$am_by_rec = (data$amount)/ (data$recency + 1)
+
+
+for (a in months_col){
+  data[,a] = data[,a] * data[,'am_by_rec']
+}
+
+data = data %>% group_by(contact_id) %>% summarise(mo_sum_1=sum(mo_1),mo_sum_2=sum(mo_2),mo_sum_3=sum(mo_3),mo_sum_4=sum(mo_4),mo_sum_5=sum(mo_5),mo_sum_6=sum(mo_6),mo_sum_7=sum(mo_7),mo_sum_8=sum(mo_8),mo_sum_9=sum(mo_9),mo_sum_10=sum(mo_10),mo_sum_11=sum(mo_11),mo_sum_12=sum(mo_12))
+# 
+
+
+placeholder_cid = data$contact_id
+
+data$contact_id<- NULL
+
+final_data = data %>% ungroup() %>% mutate(across(where(is.numeric))/rowSums(across(where(is.numeric))))
+
+# final_data$month_to_target = colnames(data)[apply(data,1,which.max)]
+final_data$contact_id = placeholder_cid
+final_data_probab = final_data %>% pivot_longer(!contact_id, names_to = "month", values_to = "probab")
+final_data_probab[final_data_probab == 0] <- NA
+final_data_probab = final_data_probab[complete.cases(final_data_probab),]
+write.csv(final_data_probab, "C://Users//arind//OneDrive//Desktop//Classes//T1 ESSEC Marketing Analytics//Ass-3//output_files//probab.csv", row.names=FALSE)
+# -----------------------------------------------------------
+# Connect to MySQL (my credentials are mysql_server_64/root/.)
+db = odbcConnect("mysql_server_64", uid="root", pwd="root")
+sqlQuery(db, "USE ma_charity")
+
+# Extract calibration data from database
+query = "SELECT a.contact_id,
+                DATEDIFF(20210530, MAX(a.act_date)) / 365 AS 'recency',
+                COUNT(a.amount) AS 'frequency',
+                AVG(a.amount) AS 'avgamount',
+                MAX(a.amount) AS 'maxamount',
+                IF(c.counter IS NULL, 0, 1) AS 'loyal',
+                c.targetamount AS 'targetamount'
+         FROM acts a
+         LEFT JOIN (SELECT contact_id, COUNT(amount) AS counter, AVG(amount) AS targetamount
+                    FROM acts
+                    WHERE (act_date >= 20210530) AND
+                          (act_date <  20220530) AND
+                          (act_type_id = 'DO')
+                    GROUP BY contact_id) AS c
+         ON c.contact_id = a.contact_id
+         WHERE (act_type_id = 'DO') AND (act_date < 20210530)
+         GROUP BY 1"
+data = sqlQuery(db, query)
+
+# Show data
+print(head(data))
+
+# In-sample, probability model
+library(nnet)
+prob.model = multinom(formula = loyal ~ (recency * frequency) + log(recency) + log(frequency),
+                      data = data)
+
+# In-sample, donation amount model
+# Note that the amount model only applies to a subset of donors...
+z = which(!is.na(data$targetamount))
+print(head(data[z, ]))
+amount.model = lm(formula = log(targetamount) ~ log(avgamount) + log(maxamount),
+                  data = data[z, ])
+
+# Extract prediction data from database
+query = "SELECT contact_id,
+                DATEDIFF(20220530, MAX(act_date)) / 365 AS 'recency',
+                COUNT(amount) AS 'frequency',
+                AVG(amount) AS 'avgamount',
+                MAX(amount) AS 'maxamount'
+         FROM acts
+         WHERE (act_type_id = 'DO')
+         GROUP BY 1"
+newdata = sqlQuery(db, query)
+print(head(newdata))
+
+# Close the connection
+odbcClose(db)
+
+# Out-of-sample predictions
+# Do NOT forget to re-transform "log(amount)" into "amount"
+out = data.frame(contact_id = newdata$contact_id)
+out$probs  = predict(object = prob.model, newdata = newdata, type = "probs")
+out$amount = exp(predict(object = amount.model, newdata = newdata))
+out$score  = out$probs * out$amount
+
+# Show results
+print(head(out))
+
+# Who is likely to be worth more than 2 EUR?
+z = which(out$score > 2)
+print(length(z))
+
+probab_df = read.csv(file = 'C://Users//arind//OneDrive//Desktop//Classes//T1 ESSEC Marketing Analytics//Ass-3//output_files//probab.csv')
+
+
+out_selected = out %>% filter(score>2)
+
+p3_probab_df = probab_df %>% filter (probab>.3)
+# Timed targets: 
+p3_probab_df_join = p3_probab_df[p3_probab_df$contact_id %in% out_selected$contact_id,]
+# Untimed targets:
+ut_targets = unique(out_selected$contact_id[!(out_selected$contact_id %in% p3_probab_df$contact_id)])
+
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_2", "SF")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_3", "SF")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_4", "SV")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_5", "SJ")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_6", "SJ")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_7", "SJ")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_8", "SA")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_9", "SA")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_10", "SO")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_11", "SO")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_12", "LAL")
+p3_probab_df_join$month = str_replace(p3_probab_df_join$month, "mo_sum_1", "LAL")
+# Targeted output 
+write.csv(p3_probab_df_join, "C://Users//arind//OneDrive//Desktop//Classes//T1 ESSEC Marketing Analytics//Ass-3//output_files//p3_targeted.csv", row.names=FALSE)
+
+# Non targeted output
+write.csv(out_selected[!(out_selected$contact_id %in%  p3_probab_df$contact_id),],"C://Users//arind//OneDrive//Desktop//Classes//T1 ESSEC Marketing Analytics//Ass-3//output_files//p3_untargeted.csv", row.names=FALSE)
+

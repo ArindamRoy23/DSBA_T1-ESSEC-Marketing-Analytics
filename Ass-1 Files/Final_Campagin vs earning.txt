@@ -1,0 +1,11 @@
+
+select 
+if(act_type_id = 'PA', 'automatic deduction', 'one-off donation') act_type,
+campaign_id, 
+sum(amount), 
+max(act_date) - min(act_date) as days,
+sum(amount)/(max(act_date) - min(act_date) ) as average_per_day
+
+from ma_charity.acts
+group by act_type_id, campaign_id
+order by sum(amount) DESC
